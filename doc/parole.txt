@@ -1,0 +1,117 @@
+*parole.txt*  A GitHub pull-request board for the fugitive workflow
+
+Author:  Sam Eigen <sam@eigen.sh>
+License: MIT
+
+==============================================================================
+CONTENTS                                                       *parole-contents*
+
+  1. Introduction ........................... |parole-introduction|
+  2. Commands ............................... |parole-commands|
+  3. Configuration .......................... |parole-configuration|
+  4. The board .............................. |parole-board|
+  5. Case files ............................. |parole-case|
+  6. Worktrees and agents ................... |parole-worktrees|
+
+==============================================================================
+1. INTRODUCTION                                            *parole-introduction*
+
+Every fugitive eventually comes up for parole. parole.nvim gives you a
+cross-repository dashboard of open GitHub pull requests (the board), readable
+per-PR case files, verdict actions (approve / request changes / comment /
+thread replies), worktree-backed deep review, and agent dispatch.
+
+Requires Neovim 0.11+, an authenticated `gh` CLI, and optionally fzf-lua,
+octo.nvim, diffview.nvim, and the `claude` CLI.
+
+==============================================================================
+2. COMMANDS                                                    *parole-commands*
+
+:Parole                                                                *:Parole*
+    Open the board. With an argument, open a case file instead:
+    `:Parole owner/repo#123` or `:Parole https://github.com/o/r/pull/123`
+
+:ParolePick                                                        *:ParolePick*
+    fzf-lua picker over every PR on the board. <CR> opens the case,
+    CTRL-D deep review, CTRL-A agent dispatch, CTRL-O octo, CTRL-B browser.
+
+:ParoleAgent  :ParoleAgent!                                       *:ParoleAgent*
+    Create a fresh worktree of the current repo on a new branch, ask for the
+    context to preload, and launch the agent. With ! the agent runs headless.
+
+:ParoleClean                                                      *:ParoleClean*
+    Remove all parole-managed worktrees and their branches.
+
+==============================================================================
+3. CONFIGURATION                                          *parole-configuration*
+
+Call `require("parole").setup({...})` (optional — defaults shown): >lua
+
+  require("parole").setup({
+    owners = {},               -- scope searches; {} = anywhere involved
+    roots = { "~/Code" },      -- where local clones live
+    worktree_dir = vim.fn.stdpath("cache") .. "/parole/worktrees",
+    refresh_interval = 300,    -- board auto-refresh seconds; 0 disables
+    limit = 50,                -- max PRs per section
+    agent = {
+      cmd = { "claude" },
+      headless_flags = { "-p", "--output-format", "text" },
+    },
+    keymaps = { ... },      -- see |parole-board| / |parole-case|; every
+                            -- buffer-local key is remappable, false disables
+  })
+<
+==============================================================================
+4. THE BOARD                                                      *parole-board*
+
+Three sections: AWAITING YOUR VERDICT (review requested of you), YOUR CASES
+(authored by you), INVOLVED (everything else mentioning you). Checks and
+review-decision columns fill in asynchronously.
+
+Buffer-local maps (press ? in any parole buffer for the live list; all keys
+are configurable, and every action has a <Plug>(parole-<action>) mapping):
+  <CR>  open case file          o   octo.nvim handoff
+  v     quick diff (full patch, folded per file)
+  K     untruncated title float ("the full charge")
+  D     deep review (worktree)  a/A interactive/headless agent dispatch
+  gx    open in browser         r   refresh    q  close    ?  help
+
+==============================================================================
+5. CASE FILES                                                      *parole-case*
+
+A PR rendered as markdown: metadata, non-green checks, body, reviews, review
+threads, comments. Maps as on the board, plus:
+
+  a  approve (grant parole)     x  request changes (deny)
+  c  comment                    R  reply to the thread under the cursor
+
+Comment and reply open a compose split: |:w| submits, |:q| aborts.
+
+==============================================================================
+6. WORKTREES AND AGENTS                                       *parole-worktrees*
+
+Deep review fetches `refs/pull/N/head` into branch `parole/pr-N` of your
+local clone and creates a worktree under `worktree_dir`, then opens
+diffview.nvim (or fugitive's |:Git| diff) against the merge base with the PR's
+base branch. Your main working tree is never touched.
+
+Agent dispatch reuses the same worktree machinery, asks for free-form context
+in a compose split, and launches the configured agent profile in a terminal
+tab with that context (plus PR metadata) as its initial prompt. Headless
+dispatch appends the profile's `headless` flags so the agent runs
+non-interactively while you watch its output stream.
+
+Profiles and levers: `agent.use` picks the profile; `agent.yolo` (run with
+no permission checks) and `agent.auto` (auto-accept edits) are off by
+default and map to per-profile flag spellings, so other harnesses (codex,
+pi, ...) drop in as new profiles.
+
+Running sessions are listed on the board under AGENTS ON DUTY; <CR> jumps
+in. Esc passes through to the agent; <C-q> leaves terminal mode.
+`require("parole.agent").toggle_last()` bounces between your last session
+and where you were.
+
+Worktrees for merged/closed PRs are swept automatically when the board
+opens. |:ParoleClean| skips dirty trees; :ParoleClean! forces.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
