@@ -188,6 +188,12 @@ rest (skips trees with uncommitted changes; `:ParoleClean!` forces).
 `:checkhealth parole` verifies the environment and warns when the yolo
 lever is on.
 
+Dispatched agents run under your login shell (`$SHELL`, falling back to `/bin/sh`
+for non-POSIX shells), so they inherit auth and PATH from your profile. On macOS
+the login keychain is locked outside a GUI session, so if you launch nvim over
+SSH, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) where your login
+shell sources it — `~/.zshenv` for zsh — so agents don't block on `/login`.
+
 ## Credits
 
 Named in the spirit of tpope's fugitive. Standing on the shoulders of `gh`,
