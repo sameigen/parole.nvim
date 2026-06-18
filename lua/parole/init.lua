@@ -8,6 +8,8 @@
 ---@field use string which profile dispatches (key into profiles)
 ---@field yolo boolean run agents with ALL permission checks off (off by default; pull deliberately)
 ---@field auto boolean run agents in their auto-accept mode (off by default)
+---@field tmux boolean dispatch into a detached tmux session instead of an nvim terminal, so giroux can observe AND steer it (the agent also survives closing the tab)
+---@field tmux_prefix string tmux session-name prefix; "giroux" (default) makes the session giroux-steerable
 ---@field profiles table<string, parole.AgentProfile> named agent harnesses (claude, codex, ...)
 
 ---@class parole.KeymapsConfig
@@ -37,6 +39,8 @@ M.defaults = {
     use = "claude",
     yolo = false,
     auto = false,
+    tmux = false,
+    tmux_prefix = "giroux",
     profiles = {
       claude = {
         cmd = { "claude" },
@@ -117,13 +121,16 @@ local function validate(opts)
     fail("`limit` must be a positive number")
   end
   if opts.agent ~= nil then
-    for _, lever in ipairs({ "yolo", "auto" }) do
+    for _, lever in ipairs({ "yolo", "auto", "tmux" }) do
       if opts.agent[lever] ~= nil and type(opts.agent[lever]) ~= "boolean" then
         fail(("`agent.%s` must be a boolean"):format(lever))
       end
     end
     if opts.agent.use ~= nil and type(opts.agent.use) ~= "string" then
       fail("`agent.use` must be a string naming a profile")
+    end
+    if opts.agent.tmux_prefix ~= nil and type(opts.agent.tmux_prefix) ~= "string" then
+      fail("`agent.tmux_prefix` must be a string")
     end
     if opts.agent.profiles ~= nil then
       if type(opts.agent.profiles) ~= "table" then

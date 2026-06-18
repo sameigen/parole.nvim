@@ -71,6 +71,19 @@ assert(la[3]:find("claude", 1, true), "agent argv preserved")
 local las = login_argv({ "claude" }, { sentinel = "MARK" })
 assert(las[3]:find("printf '%s\\n' 'MARK';", 1, true), "sentinel prepended: " .. las[3])
 
+-- tmux handoff: argv stamps the giroux convention (name + GIROUX_SESSION_ID) so
+-- giroux can observe + steer the dispatched agent
+local tmux_argv = require("parole.agent").tmux_argv
+local ta = tmux_argv("giroux/app-ab12", "ab12cd34", "/w/app", { "/bin/zsh", "-lc", "claude" })
+assert(ta[1] == "tmux" and ta[2] == "new-session" and vim.list_contains(ta, "-d"), "detached new-session")
+assert(vim.list_contains(ta, "giroux/app-ab12"), "giroux-named session")
+assert(vim.list_contains(ta, "GIROUX_SESSION_ID=ab12cd34"), "session id injected for giroux correlation")
+assert(vim.list_contains(ta, "/w/app") and ta[#ta] == "claude", "cwd + run argv appended")
+assert(pcall(parole.setup, { agent = { tmux = true } }), "agent.tmux boolean is valid")
+assert(not pcall(parole.setup, { agent = { tmux = "yes" } }), "agent.tmux must be a boolean")
+assert(not pcall(parole.setup, { agent = { tmux_prefix = 7 } }), "agent.tmux_prefix must be a string")
+parole.setup({})
+
 -- <Plug> mappings exist for every action
 for action in pairs(require("parole.keys").descriptions) do
   local plug = require("parole.keys").plug(action)
