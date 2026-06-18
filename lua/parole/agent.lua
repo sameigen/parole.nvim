@@ -22,6 +22,45 @@ local sessions = {}
 
 local HISTORY_KEEP = 50
 
+-- POSIX-family shells that accept `-lc '<posix command>'` (login_argv).
+M._POSIX_SHELLS = { sh = true, bash = true, zsh = true, dash = true, ksh = true, mksh = true, ash = true }
+
+-- Printed by a headless login shell after its profile has run, so the capture
+-- can discard profile chatter and keep only the agent's own output.
+M.OUTPUT_MARK = "__parole_agent_output_8f3a__"
+
+---Wrap an agent argv to run under a login shell, so it sources the user's
+---profile (~/.zshenv / ~/.zprofile): the agent's auth token (CLAUDE_CODE_OAUTH_TOKEN)
+---and PATH. Without this, an agent dispatched from a GUI-launched nvim can't reach
+---the macOS keychain (locked outside a GUI session) and hard-blocks on /login at the
+---first message. Quote-safe. Exposed for tests.
+---
+---opts.sentinel: emit this marker line before the agent command. A caller that
+---captures stdout (headless) can then drop everything up to the marker, so a
+---noisy login profile (banners, version managers) can't corrupt the report.
+---@param cmd string[]
+---@param opts {sentinel?: string}|nil
+---@return string[]
+function M.login_argv(cmd, opts)
+  opts = opts or {}
+  local function shq(s)
+    return "'" .. s:gsub("'", "'\\''") .. "'"
+  end
+  local joined = table.concat(vim.tbl_map(shq, cmd), " ")
+  if opts.sentinel then
+    joined = ("printf '%%s\\n' %s; "):format(shq(opts.sentinel)) .. joined
+  end
+  -- Use $SHELL so the user's profile (and token) are sourced — but only when it
+  -- is a POSIX-family shell. fish/csh/nu reject `-lc '<posix>'` outright, so fall
+  -- back to /bin/sh for them rather than break dispatch entirely.
+  local shell = os.getenv("SHELL") or ""
+  local base = shell:match("[^/]+$") or ""
+  if not M._POSIX_SHELLS[base] then
+    shell = "/bin/sh"
+  end
+  return { shell, "-lc", joined }
+end
+
 local function history_dir()
   return vim.fn.stdpath("state") .. "/parole/agents"
 end
@@ -221,9 +260,22 @@ local function launch_headless(path, prompt, opts, session)
       end
     end
   end
-  vim.fn.jobstart(cmd, {
+  -- Drop login-shell profile chatter: keep stdout only after the sentinel line.
+  local seen_mark = false
+  local function on_stdout(_, data)
+    for _, line in ipairs(data or {}) do
+      if not seen_mark then
+        if line:find(M.OUTPUT_MARK, 1, true) then
+          seen_mark = true
+        end
+      elseif line ~= "" then
+        table.insert(out, line)
+      end
+    end
+  end
+  vim.fn.jobstart(M.login_argv(cmd, { sentinel = M.OUTPUT_MARK }), {
     cwd = path,
-    on_stdout = collect(out),
+    on_stdout = on_stdout,
     on_stderr = collect(err_out),
     on_exit = function(_, code)
       vim.schedule(function()
@@ -285,7 +337,7 @@ local function launch(path, prompt, opts)
     vim.keymap.set("t", "<C-" .. dir .. ">", "<Cmd>wincmd " .. dir .. "<CR>", { buffer = buf })
   end
 
-  vim.fn.jobstart(cmd, {
+  vim.fn.jobstart(M.login_argv(cmd), {
     term = true,
     cwd = path,
     on_exit = function(_, code)
