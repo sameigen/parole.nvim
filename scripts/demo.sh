@@ -1,23 +1,16 @@
 #!/bin/sh
-# Regenerate the README demo GIF. Reproducible: the demo is fully scripted
-# (scripts/demo/demo.lua) and ends with :qa, so this just records nvim driving
-# it and renders the cast to a GIF. Requires: asciinema, agg, nvim >= 0.11.
+# Regenerate the README demo (assets/demo.gif + .mp4) with vhs.
+# The demo is fully scripted + deterministic (scripts/demo/demo.lua): the real
+# board, case file and quick-diff over canned GitHub responses — no network or gh.
 #
-#   scripts/demo.sh            # -> assets/demo.gif
+#   scripts/demo.sh
+#
+# Requires: vhs (https://github.com/charmbracelet/vhs) and nvim >= 0.11.
 set -e
 cd "$(dirname "$0")/.."
-
-command -v asciinema >/dev/null || { echo "need asciinema (brew install asciinema)"; exit 1; }
-command -v agg >/dev/null || { echo "need agg (brew install agg)"; exit 1; }
-
-mkdir -p assets
-CAST="$(mktemp -t parole-demo).cast"
-
-asciinema rec --overwrite --window-size 96x24 \
-  -c 'nvim --clean --cmd "set rtp+=." -c "lua dofile(\"scripts/demo/demo.lua\")"' \
-  "$CAST"
-
-awk '/1049l/{exit} {print}' "$CAST" >"$CAST.trim"
-agg --font-size 20 --font-family "Menlo" --line-height 1.4 --idle-time-limit 1.4 "$CAST.trim" assets/demo.gif
-rm -f "$CAST" "$CAST.trim"
-echo "wrote assets/demo.gif"
+command -v vhs >/dev/null || {
+  echo "need vhs — https://github.com/charmbracelet/vhs (brew install vhs)"
+  exit 1
+}
+vhs scripts/demo/demo.tape
+echo "wrote assets/demo.gif + assets/demo.mp4"
