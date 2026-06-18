@@ -60,6 +60,17 @@ cmd = build({ headless = true }, "x")
 assert(cmd[1] == "codex" and vim.list_contains(cmd, "exec"), "custom profile dispatches")
 parole.setup({})
 
+-- login_argv wraps the agent under a login shell (auth token + PATH), quote-safe
+local login_argv = require("parole.agent").login_argv
+local la = login_argv({ "claude", "review the 'thing'" })
+assert(la[2] == "-lc", "runs a login shell")
+assert(la[3]:find("'review the '\\''thing'\\'''", 1, true), "single quotes escaped: " .. la[3])
+assert(la[3]:find("claude", 1, true), "agent argv preserved")
+-- headless sentinel: a marker line is printed before the agent command so the
+-- capture can drop login-shell profile chatter
+local las = login_argv({ "claude" }, { sentinel = "MARK" })
+assert(las[3]:find("printf '%s\\n' 'MARK';", 1, true), "sentinel prepended: " .. las[3])
+
 -- <Plug> mappings exist for every action
 for action in pairs(require("parole.keys").descriptions) do
   local plug = require("parole.keys").plug(action)
