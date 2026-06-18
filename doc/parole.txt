@@ -54,8 +54,16 @@ Call `require("parole").setup({...})` (optional — defaults shown): >lua
     refresh_interval = 300,    -- board auto-refresh seconds; 0 disables
     limit = 50,                -- max PRs per section
     agent = {
-      cmd = { "claude" },
-      headless_flags = { "-p", "--output-format", "text" },
+      use = "claude",               -- which profile dispatches
+      yolo = false, auto = false,   -- off by default; pull deliberately
+      profiles = {
+        claude = {
+          cmd = { "claude" },
+          headless = { "-p", "--output-format", "text" },
+          yolo_flags = { "--dangerously-skip-permissions" },
+          auto_flags = { "--permission-mode", "auto" },
+        },
+      },
     },
     keymaps = { ... },      -- see |parole-board| / |parole-case|; every
                             -- buffer-local key is remappable, false disables

@@ -11,7 +11,7 @@ command -v asciinema >/dev/null || { echo "need asciinema (brew install asciinem
 command -v agg >/dev/null || { echo "need agg (brew install agg)"; exit 1; }
 
 mkdir -p assets
-CAST="$(mktemp -t giroux-demo).cast"
+CAST="$(mktemp -t parole-demo).cast"
 
 asciinema rec --overwrite --window-size 96x24 \
   -c 'nvim --clean --cmd "set rtp+=." -c "lua dofile(\"scripts/demo/demo.lua\")"' \
