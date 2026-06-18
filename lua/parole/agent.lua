@@ -61,6 +61,31 @@ function M.login_argv(cmd, opts)
   return { shell, "-lc", joined }
 end
 
+---tmux session name for a dispatch: `<prefix>/<base>-<id4>`. The giroux prefix +
+---an `-<4hex>` suffix is exactly what giroux's correlation/rename recognizes.
+---@param prefix string
+---@param path string worktree
+---@param id string GIROUX_SESSION_ID
+---@return string
+local function tmux_name(prefix, path, id)
+  local base = vim.fs.basename(path):gsub("[^%w_-]", "-")
+  return ("%s/%s-%s"):format(prefix, base, id:sub(1, 4))
+end
+
+---Build the `tmux new-session` argv that launches the agent detached, stamped to
+---the giroux convention (session name + GIROUX_SESSION_ID env) so giroux can
+---observe AND steer it. Pure argv (no shell quoting); exposed for tests.
+---@param name string tmux session name
+---@param id string GIROUX_SESSION_ID
+---@param path string cwd for the agent
+---@param run string[] the (login-wrapped) command argv to run
+---@return string[]
+function M.tmux_argv(name, id, path, run)
+  local argv = { "tmux", "new-session", "-d", "-s", name, "-e", "GIROUX_SESSION_ID=" .. id, "-c", path }
+  vim.list_extend(argv, run)
+  return argv
+end
+
 local function history_dir()
   return vim.fn.stdpath("state") .. "/parole/agents"
 end
@@ -305,6 +330,59 @@ local function launch_headless(path, prompt, opts, session)
   redraw_board()
 end
 
+---Hand off to tmux (giroux's substrate): launch the agent detached in a
+---giroux-named tmux session, then attach in a tab. Closing the tab detaches —
+---the agent keeps running and giroux observes/steers it. Returns false (so the
+---caller falls back to a plain terminal) when tmux is unavailable.
+---@param path string
+---@param prompt string
+---@param opts { title: string }
+---@param session parole.AgentSession
+---@return boolean handed_off
+local function launch_tmux(path, prompt, opts, session)
+  local agent = require("parole").config.agent
+  if vim.fn.executable("tmux") ~= 1 then
+    vim.notify("parole: agent.tmux is on but tmux isn't installed — using a terminal", vim.log.levels.WARN)
+    return false
+  end
+  local cmd = M.build_cmd({ headless = false }, prompt)
+  local id = (vim.fn.system("uuidgen") or ""):lower():gsub("%-.*", ""):gsub("%s", "")
+  if id == "" then
+    id = tostring(os.time())
+  end
+  local name = tmux_name(agent.tmux_prefix, path, id)
+  local r = vim.system(M.tmux_argv(name, id, path, M.login_argv(cmd)), { text = true }):wait()
+  if r.code ~= 0 then
+    vim.notify("parole: tmux launch failed: " .. vim.trim(r.stderr or ""), vim.log.levels.ERROR)
+    return false
+  end
+  session.tmux = name
+  -- attach in a tab; closing it detaches (the agent lives on under giroux's watch)
+  vim.cmd.tabnew()
+  local buf = vim.api.nvim_get_current_buf()
+  session.buf = buf
+  vim.keymap.set("t", "<Esc>", "<Esc>", { buffer = buf, desc = "parole: Esc belongs to the agent" })
+  vim.keymap.set("t", "<C-q>", "<C-\\><C-n>", { buffer = buf, desc = "parole: leave terminal mode" })
+  for _, dir in ipairs({ "h", "j", "k", "l" }) do
+    vim.keymap.set("t", "<C-" .. dir .. ">", "<Cmd>wincmd " .. dir .. "<CR>", { buffer = buf })
+  end
+  vim.fn.jobstart({ "tmux", "attach-session", "-t", name }, {
+    term = true,
+    on_exit = function()
+      session.status = "handed off (tmux)"
+      vim.schedule(function()
+        vim.cmd.checktime() -- pick up files the agent edited
+        redraw_board()
+      end)
+    end,
+  })
+  vim.bo[buf].bufhidden = "hide" -- closing the tab detaches, never kills
+  vim.cmd.startinsert()
+  vim.notify(("parole: dispatched %s in tmux (%s) — observe/steer it in giroux"):format(opts.title, name))
+  redraw_board()
+  return true
+end
+
 ---@param path string worktree to run in
 ---@param prompt string
 ---@param opts { headless: boolean, title: string }
@@ -321,6 +399,11 @@ local function launch(path, prompt, opts)
 
   if opts.headless then
     return launch_headless(path, prompt, opts, session)
+  end
+
+  -- opt-in handoff: run in tmux so giroux can observe + steer (falls back below)
+  if require("parole").config.agent.tmux and launch_tmux(path, prompt, opts, session) then
+    return
   end
 
   local cmd = M.build_cmd(opts, prompt)

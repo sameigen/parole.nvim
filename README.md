@@ -88,6 +88,8 @@ require("parole").setup({
     use = "claude",   -- which profile dispatches
     yolo = false,     -- pull deliberately: agent runs with NO permission checks
     auto = false,     -- agent auto-accepts edits
+    tmux = false,     -- dispatch into tmux so giroux.nvim can observe + steer it
+    tmux_prefix = "giroux", -- session-name prefix; "giroux" makes it giroux-steerable
     profiles = {
       claude = {
         cmd = { "claude" },
@@ -178,6 +180,16 @@ between windows. Suggested global map:
 ```lua
 vim.keymap.set({ "n", "t" }, "<C-,>", function() require("parole.agent").toggle_last() end)
 ```
+
+### Hand off to giroux.nvim
+
+With `agent.tmux = true`, interactive dispatch launches the agent in a detached
+**tmux** session (named `giroux/…` with `GIROUX_SESSION_ID`) and attaches a tab
+to it. Closing the tab detaches — the agent keeps running — and
+[giroux.nvim](https://github.com/sameigen/giroux.nvim) then **observes and
+steers** that session like any other, across machines. No dependency either way:
+parole just spawns a normal tmux + `claude` session, and giroux discovers it via
+`~/.claude` + tmux. Dispatch a review agent here, watch and answer it in giroux.
 
 ## Housekeeping
 
